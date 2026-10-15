@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Maintenance release containing validated documentation and/or Ruff patch updates.
+- Device control runtime and configuration schema are unchanged.
+
 Changes are listed by release. Commission a safe output after installation or
 an update. Release candidates are explicitly marked as prereleases.
 
