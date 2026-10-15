@@ -7,7 +7,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPONENT = Path("custom_components/lanbon_mqtt")
@@ -68,7 +68,9 @@ def build_release(expected_tag: str | None = None) -> dict:
     destination.mkdir(exist_ok=True)
     archive = destination / f"lanbon-mqtt-{version}.zip"
     hashes = {}
-    with ZipFile(archive, "w", compression=ZIP_DEFLATED, compresslevel=9) as output:
+    # Stored members avoid platform/zlib-version differences in DEFLATE output.
+    # This small component favors portable, independently repeatable checksums.
+    with ZipFile(archive, "w", compression=ZIP_STORED) as output:
         for path in sorted(files):
             name = path.relative_to(ROOT).as_posix()
             data = path.read_bytes()
@@ -77,9 +79,9 @@ def build_release(expected_tag: str | None = None) -> dict:
             # Use fixed timestamps, Unix permissions and order on every build host.
             info = ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.create_system = 3
-            info.compress_type = ZIP_DEFLATED
+            info.compress_type = ZIP_STORED
             info.external_attr = 0o100644 << 16
-            output.writestr(info, data, compresslevel=9)
+            output.writestr(info, data)
             hashes[name] = hashlib.sha256(data).hexdigest()
     with ZipFile(archive) as saved:
         if saved.testzip() is not None or set(saved.namelist()) != set(hashes):
