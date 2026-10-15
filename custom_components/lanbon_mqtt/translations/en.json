@@ -1,0 +1,240 @@
+{
+  "title": "Lanbon MQTT",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Lanbon through Home Assistant MQTT",
+        "description": "Use the broker already configured in Home Assistant MQTT. Broker address, credentials and TLS are managed by the native MQTT integration. Automatic discovery listens for 35 seconds without sending device commands.",
+        "data": {
+          "discovery_prefix": "Native MQTT topic prefix",
+          "discovery_mode": "Find mesh IDs"
+        },
+        "data_description": {
+          "discovery_prefix": "Usually homeassistant. This does not change the broker or global MQTT discovery configuration."
+        }
+      },
+      "discovery_confirm": {
+        "title": "Lanbon MQTT hint found",
+        "description": "A Lanbon native configuration was found. Continue with a passive scan. Retained configuration is a hint and does not prove that a device is currently reachable."
+      },
+      "scan": {
+        "title": "Listening for Lanbon MQTT reports"
+      },
+      "select": {
+        "title": "Select Lanbon meshes",
+        "description": "Current energy reports are shown first. Other current reports and retained data are hints. Select the mesh IDs belonging to your installation, or enter a known ID.",
+        "data": {
+          "groups": "Mesh topic IDs"
+        }
+      },
+      "manual": {
+        "title": "Enter Lanbon mesh IDs",
+        "description": "A quiet scan does not mean there are no devices. Enter the 12 hexadecimal digits used in native MQTT topics, one per line or separated by commas. This ID is not necessarily the physical root MAC.",
+        "data": {
+          "groups": "Mesh topic IDs"
+        }
+      },
+      "confirm": {
+        "title": "Confirm Lanbon setup",
+        "description": "Selected meshes: {groups}. Confirm the legacy MQTT profile to enable fixed all-status cache requests after setup. Reports describe device or root-reported state; physical delivery is not verified.",
+        "data": {
+          "max_report_age": "Advanced: report freshness window (seconds)",
+          "query_interval": "Advanced: root cache refresh interval (seconds)",
+          "query_on_start": "Request the root cache after setup and reconnect",
+          "enable_controls": "Enable supported light and switch controls",
+          "allow_existing_controls": "Add Lanbon controls alongside existing controls",
+          "profile_confirmed": "These meshes use the legacy Lanbon Smart Living MQTT profile",
+          "configure_network": "Manage optional network roots",
+          "metadata_children": "Read child mesh metadata through configured roots"
+        },
+        "data_description": {
+          "max_report_age": "Each field expires separately. Root cache replies have unknown peer age and remain assumed state.",
+          "query_interval": "At least 60 seconds. The fixed all-status request reads the root cache; it does not prove each peer is reachable.",
+          "enable_controls": "Creates supported controls after type and route qualification. Existing controls are preserved. Additional controls for devices already represented elsewhere require the option below.",
+          "allow_existing_controls": "Off by default. Adds separate controls while preserving existing controls and entity IDs. Also requires Enable supported light and switch controls.",
+          "query_on_start": "Read the root cache when this integration starts or MQTT reconnects. Periodic cache refresh uses the interval below.",
+          "profile_confirmed": "Confirm the selected mesh topic IDs and legacy MQTT profile before permitting fixed cache requests or controls.",
+          "configure_network": "Optional. Continue to ordinary forms for each selected mesh. Leave off for MQTT alone, or to keep existing network bindings unchanged.",
+          "metadata_children": "Optional network diagnostics through a configured root. At most 16 children per 300-second cycle; larger meshes rotate. This does not prove device health."
+        }
+      },
+      "mqtt_setup": {
+        "title": "Set up Home Assistant MQTT",
+        "description": "[Set up MQTT](/config/integrations/dashboard/add?domain=mqtt), or [manage an existing MQTT connection](/config/integrations/integration/mqtt), using the native Home Assistant integration. Then return here and submit this form to retry. Broker credentials and TLS stay in Home Assistant MQTT. This form does not contact devices."
+      },
+      "network": {
+        "title": "Optional root network metadata",
+        "description": "Configured network mesh IDs: {groups}. Add or edit each root using its known LAN address and physical MAC. Save and finish applies all draft changes. These forms do not contact devices.",
+        "data": {
+          "network_action": "Next action",
+          "metadata_children": "Read child mesh metadata through configured roots"
+        },
+        "data_description": {
+          "metadata_children": "Optional network diagnostics through a configured root. At most 16 children per 300-second cycle; larger meshes rotate. This does not prove device health."
+        }
+      },
+      "network_select": {
+        "title": "Choose a mesh for its root metadata",
+        "description": "Select one of your configured MQTT mesh IDs. The next form adds or edits that mesh root; the mesh ID and physical root MAC may differ.",
+        "data": {
+          "group": "Mesh topic ID"
+        }
+      },
+      "network_binding": {
+        "title": "Root network connection",
+        "description": "Mesh topic ID: {group}. Enter a known root address and physical MAC. Runtime reads verify root identity before accepting metadata; this form makes no network requests.",
+        "data": {
+          "host": "Root LAN IPv4 address",
+          "root_mac": "Physical root MAC address"
+        },
+        "data_description": {
+          "host": "A numeric private IPv4 address. Do not include a scheme, port or path.",
+          "root_mac": "Exactly 12 hexadecimal digits, or six octets separated consistently by colons or hyphens. This identifies the physical root, not the MQTT mesh topic."
+        }
+      },
+      "network_remove": {
+        "title": "Remove a root network binding",
+        "description": "Select the network binding to remove from this draft. MQTT mesh selection and existing device controls are preserved. Save and finish applies the removal.",
+        "data": {
+          "group": "Configured root mesh ID"
+        }
+      },
+      "remove_bound_groups": {
+        "title": "Confirm removal of mesh network bindings",
+        "description": "You removed these MQTT mesh IDs from the selection: {groups}. Their saved root network bindings must also be removed. Confirm only this draft removal; changes apply when the flow is saved.",
+        "data": {
+          "remove_bindings": "Remove the network bindings for these removed mesh IDs"
+        }
+      }
+    },
+    "progress": {
+      "scan": "Listening for MQTT reports for 35 seconds…"
+    },
+    "error": {
+      "invalid_group_id": "Enter a mesh topic ID with exactly 12 hexadecimal digits; zero and broadcast IDs are invalid.",
+      "invalid_prefix": "Use a literal topic prefix with letters, numbers, underscores, dots or hyphens in each level.",
+      "too_many_groups": "Select at most 16 mesh IDs.",
+      "no_groups": "Enter or select at least one mesh ID.",
+      "profile_not_confirmed": "Confirm the selected meshes and legacy MQTT profile before continuing.",
+      "invalid_settings": "Check the settings. Freshness must be 30 to 86400 seconds and cache refresh 60 to 86400 seconds.",
+      "mqtt_unavailable": "Home Assistant MQTT is configured but its broker connection is unavailable. Connect it in the native MQTT integration, then retry.",
+      "invalid_root_bindings": "Use a unique numeric private IPv4 address and unique physical unicast MAC for each selected mesh. Check for duplicate roots or addresses.",
+      "mqtt_not_configured": "Configure and enable the native Home Assistant MQTT integration, then retry.",
+      "invalid_root_host": "Enter a numeric private IPv4 address without a URL scheme, port or path.",
+      "invalid_root_mac": "Enter a valid physical unicast MAC as 12 hexadecimal digits or six consistently separated octets.",
+      "network_required": "Child metadata reads require at least one root network binding. Add a root, or turn off child metadata reads before saving.",
+      "no_root_bindings": "There are no root network bindings to remove. Add one, or save and finish with MQTT alone.",
+      "confirmation_required": "Confirm removal of the bindings for the mesh IDs you removed."
+    },
+    "abort": {
+      "already_configured": "Lanbon MQTT is already configured for this Home Assistant broker. Use its options to change mesh IDs.",
+      "single_instance_allowed": "Only one Lanbon MQTT entry is needed. Use the existing entry options to add or change mesh IDs.",
+      "invalid_discovery_info": "This message is not a qualified Lanbon native MQTT configuration."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Lanbon MQTT options",
+        "description": "Changes take effect only when you save the completed flow, then reload this integration. Enter mesh topic IDs one per line or separated by commas and confirm the legacy profile. Existing network bindings remain unchanged unless explicitly edited or removed.",
+        "data": {
+          "groups": "Mesh topic IDs",
+          "discovery_prefix": "Native MQTT topic prefix",
+          "max_report_age": "Advanced: report freshness window (seconds)",
+          "query_interval": "Advanced: root cache refresh interval (seconds)",
+          "query_on_start": "Request the root cache after setup and reconnect",
+          "enable_controls": "Enable supported light and switch controls",
+          "allow_existing_controls": "Add Lanbon controls alongside existing controls",
+          "profile_confirmed": "These meshes use the legacy Lanbon Smart Living MQTT profile",
+          "configure_network": "Manage optional network roots",
+          "metadata_children": "Read child mesh metadata through configured roots"
+        },
+        "data_description": {
+          "max_report_age": "Each field expires separately. Root cache replies have unknown peer age and remain assumed state.",
+          "query_interval": "At least 60 seconds. The fixed all-status request reads the root cache; it does not prove each peer is reachable.",
+          "enable_controls": "Creates supported controls after type and route qualification. Existing controls are preserved. Additional controls for devices already represented elsewhere require the option below.",
+          "allow_existing_controls": "Off by default. Adds separate controls while preserving existing controls and entity IDs. Also requires Enable supported light and switch controls.",
+          "query_on_start": "Read the root cache when this integration starts or MQTT reconnects. Periodic cache refresh uses the interval below.",
+          "profile_confirmed": "Confirm the selected mesh topic IDs and legacy MQTT profile before permitting fixed cache requests or controls.",
+          "configure_network": "Optional. Continue to ordinary forms for each selected mesh. Leave off for MQTT alone, or to keep existing network bindings unchanged.",
+          "metadata_children": "Optional network diagnostics through a configured root. At most 16 children per 300-second cycle; larger meshes rotate. This does not prove device health."
+        }
+      },
+      "network": {
+        "title": "Optional root network metadata",
+        "description": "Configured network mesh IDs: {groups}. Add or edit each root using its known LAN address and physical MAC. Save and finish applies all draft changes. These forms do not contact devices.",
+        "data": {
+          "network_action": "Next action",
+          "metadata_children": "Read child mesh metadata through configured roots"
+        },
+        "data_description": {
+          "metadata_children": "Optional network diagnostics through a configured root. At most 16 children per 300-second cycle; larger meshes rotate. This does not prove device health."
+        }
+      },
+      "network_select": {
+        "title": "Choose a mesh for its root metadata",
+        "description": "Select one of your configured MQTT mesh IDs. The next form adds or edits that mesh root; the mesh ID and physical root MAC may differ.",
+        "data": {
+          "group": "Mesh topic ID"
+        }
+      },
+      "network_binding": {
+        "title": "Root network connection",
+        "description": "Mesh topic ID: {group}. Enter a known root address and physical MAC. Runtime reads verify root identity before accepting metadata; this form makes no network requests.",
+        "data": {
+          "host": "Root LAN IPv4 address",
+          "root_mac": "Physical root MAC address"
+        },
+        "data_description": {
+          "host": "A numeric private IPv4 address. Do not include a scheme, port or path.",
+          "root_mac": "Exactly 12 hexadecimal digits, or six octets separated consistently by colons or hyphens. This identifies the physical root, not the MQTT mesh topic."
+        }
+      },
+      "network_remove": {
+        "title": "Remove a root network binding",
+        "description": "Select the network binding to remove from this draft. MQTT mesh selection and existing device controls are preserved. Save and finish applies the removal.",
+        "data": {
+          "group": "Configured root mesh ID"
+        }
+      },
+      "remove_bound_groups": {
+        "title": "Confirm removal of mesh network bindings",
+        "description": "You removed these MQTT mesh IDs from the selection: {groups}. Their saved root network bindings must also be removed. Confirm only this draft removal; changes apply when the flow is saved.",
+        "data": {
+          "remove_bindings": "Remove the network bindings for these removed mesh IDs"
+        }
+      }
+    },
+    "error": {
+      "invalid_group_id": "Enter a mesh topic ID with exactly 12 hexadecimal digits; zero and broadcast IDs are invalid.",
+      "invalid_prefix": "Use a literal topic prefix with letters, numbers, underscores, dots or hyphens in each level.",
+      "too_many_groups": "Select at most 16 mesh IDs.",
+      "no_groups": "Enter or select at least one mesh ID.",
+      "profile_not_confirmed": "Confirm the selected meshes and legacy MQTT profile before continuing.",
+      "invalid_settings": "Check the settings. Freshness must be 30 to 86400 seconds and cache refresh 60 to 86400 seconds.",
+      "mqtt_unavailable": "Home Assistant MQTT is configured but its broker connection is unavailable. Connect it in the native MQTT integration, then retry.",
+      "invalid_root_bindings": "Use a unique numeric private IPv4 address and unique physical unicast MAC for each selected mesh. Check for duplicate roots or addresses.",
+      "mqtt_not_configured": "Configure and enable the native Home Assistant MQTT integration, then retry.",
+      "invalid_root_host": "Enter a numeric private IPv4 address without a URL scheme, port or path.",
+      "invalid_root_mac": "Enter a valid physical unicast MAC as 12 hexadecimal digits or six consistently separated octets.",
+      "network_required": "Child metadata reads require at least one root network binding. Add a root, or turn off child metadata reads before saving.",
+      "no_root_bindings": "There are no root network bindings to remove. Add one, or save and finish with MQTT alone.",
+      "confirmation_required": "Confirm removal of the bindings for the mesh IDs you removed."
+    }
+  },
+  "selector": {
+    "discovery_mode": {
+      "options": {
+        "automatic": "Automatic passive scan",
+        "manual": "Enter known mesh IDs"
+      }
+    },
+    "network_action": {
+      "options": {
+        "add_edit": "Add or edit a root",
+        "remove": "Remove a root binding",
+        "finish": "Save and finish"
+      }
+    }
+  }
+}

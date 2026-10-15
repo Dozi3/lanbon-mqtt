@@ -1,0 +1,4 @@
+{"topic":"homeassistant/112233445566/light/AABBCCDDEEFF/state","payload_hex":"4f4646","retained":false}
+{"topic":"homeassistant/112233445566/light/AABBCCDDEEFF/brightnessState","payload_hex":"3733","retained":false}
+{"topic":"lanbon/a/MAC:112233445566/s2m/cmdStatusSynchronous","payload_hex":"0000000000aabbccddeeff4d","retained":false}
+{"topic":"lanbon/a/L8devCompleteDetailReport","payload_hex":"01080100000000000000000000000000aabbccddeeff7560","retained":false}

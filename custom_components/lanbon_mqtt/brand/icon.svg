@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+<title>Lanbon MQTT community integration: connected light</title>
+<rect x="16" y="16" width="224" height="224" rx="48" fill="#10334b"/>
+<g fill="none" stroke="#58d6df" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+<path d="M70 76v98h116M70 174l75-77"/>
+</g>
+<circle cx="70" cy="76" r="18" fill="#58d6df"/>
+<circle cx="70" cy="174" r="18" fill="#58d6df"/>
+<circle cx="186" cy="174" r="18" fill="#58d6df"/>
+<circle cx="154" cy="87" r="33" fill="#ffc65c"/>
+<path d="M143 128h22" stroke="#ffc65c" stroke-width="10" stroke-linecap="round"/>
+</svg>
