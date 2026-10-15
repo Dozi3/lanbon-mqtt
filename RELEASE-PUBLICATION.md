@@ -108,7 +108,8 @@ installs on a household server, or restarts Home Assistant.
 Keep main protected with required pull requests, **strict/up-to-date** required
 checks (**Tests, lint and package**, **Hassfest**, **HACS**), administrator
 enforcement, and no force pushes or deletion. Configure these before enabling
-maintenance on a fork; disable maintenance before relaxing them. The merge API
+maintenance on a fork. Before relaxing them, disable maintenance and cancel
+all queued/in-progress maintenance runs, or wait for them to finish. The merge API
 conditions the expected head SHA, while strict protection guards a concurrent
 base-branch advance.
 
