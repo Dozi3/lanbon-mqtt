@@ -2,14 +2,14 @@
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://www.hacs.xyz/docs/faq/custom_repositories/)
 [![Validate](https://github.com/Dozi3/lanbon-mqtt/actions/workflows/validate.yml/badge.svg)](https://github.com/Dozi3/lanbon-mqtt/actions/workflows/validate.yml)
-[![GitHub release](https://img.shields.io/github/v/release/Dozi3/lanbon-mqtt?include_prereleases)](https://github.com/Dozi3/lanbon-mqtt/releases)
+[![GitHub release](https://img.shields.io/github/v/release/Dozi3/lanbon-mqtt)](https://github.com/Dozi3/lanbon-mqtt/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Local controls, reported state and mesh diagnostics for Lanbon devices running
 the **stock, legacy Smart Living MQTT profile**. Set it up through normal Home
 Assistant screens, using the MQTT broker you already have.
 
-**First public release: `0.3.0-rc.4` — a release candidate.** Install through HACS
+**Stable release: `0.3.0`.** Install through HACS
 as a custom repository. Inclusion in the HACS default catalogue is a separate
 process. This community project is not affiliated with Lanbon, Home Assistant
 or HACS.
@@ -96,6 +96,7 @@ pages remain separate.
 | [Diagnostic catalogue](DIAGNOSTICS.md) | Exposed fields, raw values and interpretation limits |
 | [Protocol contract](PROTOCOL.md) | Topics, binary layouts and command qualification |
 | [Verification](TESTING.md) | Reproducible checks and evidence boundaries |
+| [Release automation](RELEASE-PUBLICATION.md#automatic-maintenance) | Eligible updates, required checks and how to stop automation |
 | [Changelog](CHANGELOG.md) | Release changes |
 
 For help, use [Support](SUPPORT.md). For contributions, read

@@ -1,7 +1,20 @@
 # Changelog
 
-Changes are listed by release. Release candidates are prereleases and should
-be commissioned on a safe output before broader use.
+Changes are listed by release. Commission a safe output after installation or
+an update. Release candidates are explicitly marked as prereleases.
+
+## 0.3.0 — 2026-10-15
+
+First stable public release. Promotes the accepted `0.3.0-rc.4` integration
+runtime without changing device behavior, entity identities or storage schema.
+
+- Merge the verified Dependabot Ruff development-tooling update.
+- Retain the reviewed fix for byte-identical Windows/Linux release archives.
+- Add conservative automatic maintenance: verified Ruff patch updates and
+  separate, tested patch-release PRs for documentation/development-only changes.
+- Keep runtime, protocol, Home Assistant fixture and workflow changes under
+  maintainer review; publishing does not update anyone's Home Assistant.
+- Preserve the previous release candidate and its immutable version tag.
 
 ## 0.3.0-rc.4 — 2026-10-15
 

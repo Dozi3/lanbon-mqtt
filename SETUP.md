@@ -31,9 +31,10 @@ broker to the Internet to make a switch reachable.
 3. Enter `https://github.com/Dozi3/lanbon-mqtt` and select **Integration** as the
    type. Select **Add**.
 4. Find **Lanbon MQTT**, open it and select **Download**.
-5. Select a published version. The first public release is `0.3.0-rc.4`, a
-   prerelease. If it is hidden, enable **Show beta versions** in the repository
-   menu if offered, then use the version selector in **Download/Redownload**.
+5. Select the latest stable published version (`0.3.0` or later). Stable
+   releases do not require **Show beta versions**. Use that option only when
+   intentionally testing a release candidate, then select its `rc` version in
+   **Download/Redownload**.
 6. Restart Home Assistant when prompted.
 
 ![Official HACS custom repository dialog example](docs/images/01-hacs-custom-repository.png)
