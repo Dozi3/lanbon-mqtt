@@ -131,9 +131,11 @@ gh api --method POST repos/Dozi3/lanbon-mqtt/dispatches -f event_type=lanbon-mai
 
 For an immediate active run, use `event_type=lanbon-maintenance` instead. This
 dispatch mechanism cannot choose a different workflow branch. Inspect the run
-under **Actions → Safe maintenance**. Stale generated branches/PRs and an
-unexpected version transition stop safely for maintainer inspection; do not
-force a version tag or disable protection to recover them. The separate
+under **Actions → Safe maintenance**. An unchanged generated branch/PR that
+falls behind main can recover through GitHub's native branch update with an
+expected head SHA, followed by fresh validation. Conflicts, unexpected branch
+content or version transitions stop for maintainer inspection; do not force
+a version tag or disable protection to recover them. The separate
 **Release** workflow publishes only explicit version tags, and rejects branch
 dispatches.
 

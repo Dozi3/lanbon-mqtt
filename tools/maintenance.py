@@ -389,7 +389,35 @@ class Maintenance:
             pr["head"].get("ref") == f"automation/release-{target}", "Unexpected release branch"
         )
         require(pr.get("body") == self.body(target), "Release PR marker/body changed")
-        self.check_generated(main, pr["head"]["sha"], stable_version)
+        try:
+            self.check_generated(main, pr["head"]["sha"], stable_version)
+        except PolicyError:
+            self.prove_stale_generated(main, pr["head"]["sha"], stable_version)
+            if self.api.dry_run:
+                self.note(f"Dry run: would update stale release PR #{pr['number']} using GitHub")
+                return False
+            require(self.head() == main, "Main advanced before the release branch update")
+            self.api.request(
+                "PUT",
+                f"/pulls/{pr['number']}/update-branch",
+                {"expected_head_sha": pr["head"]["sha"]},
+            )
+            self.dispatch("validate.yml", pr["head"]["ref"])
+            self.note(f"Updated release PR #{pr['number']} from main; awaiting fresh validation")
+            return False
+        return True
+
+    def prove_stale_generated(self, main, head, stable_version):
+        comparison = self.api.request("GET", f"/compare/{main}...{head}")
+        base = comparison.get("merge_base_commit", {}).get("sha")
+        require(
+            isinstance(base, str)
+            and re.fullmatch(r"[0-9a-f]{40}", base) is not None
+            and base != main,
+            "Release branch is not a provably stale generated branch; human review is required",
+        )
+        self.api.compare(base, main)
+        self.check_generated(base, head, stable_version)
 
     def check_generated(self, base, head, stable_version):
         files = self.api.compare(base, head)
@@ -504,11 +532,13 @@ class Maintenance:
         if existing:
             sha = existing["object"]["sha"]
             commit = self.api.request("GET", f"/commits/{sha}")
-            require(
-                [parent["sha"] for parent in commit.get("parents", [])] == [main],
-                "Existing release branch has a stale or unexpected parent",
-            )
-            self.check_generated(main, sha, stable_version)
+            if [parent["sha"] for parent in commit.get("parents", [])] == [main]:
+                self.check_generated(main, sha, stable_version)
+            else:
+                self.prove_stale_generated(main, sha, stable_version)
+                self.note(
+                    "Recovered a proven generated orphan branch; its PR will update from main"
+                )
         else:
             commit = self.api.request("GET", f"/git/commits/{main}")
             tree = self.api.request(
@@ -595,7 +625,8 @@ class Maintenance:
             ):
                 pr = self.api.request("GET", f"/pulls/{item['number']}")
                 self.safe_changes(stable_sha, main)
-                self.candidate(pr, main, stable_version)
+                if not self.candidate(pr, main, stable_version):
+                    return
                 if not self.approved(pr, main):
                     return
                 sha = self.merge(pr, validate_main=False)

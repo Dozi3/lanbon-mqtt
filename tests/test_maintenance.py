@@ -683,3 +683,95 @@ def test_later_main_commit_recovers_publication_at_exact_merged_release_sha(monk
     monkeypatch.setattr(maintenance, "publish", lambda *args: publications.append(args))
     maintenance.run()
     assert publications == [(SHA, "stable", "0.3.0")]
+
+
+class StaleGeneratedAPI(ReadOnlyAPI):
+    dry_run = False
+
+    def __init__(self, *, tampered=False):
+        super().__init__()
+        self.tampered = tampered
+        self.writes = []
+
+    def request(self, method, path, data=None, optional=False):
+        if method != "GET":
+            self.writes.append((method, path, data))
+            return {"number": 10}
+        if path == f"/compare/{'b' * 40}...{SHA}":
+            return {"merge_base_commit": {"sha": "c" * 40}}
+        if path == "/git/ref/heads/automation/release-0.3.1":
+            return {"object": {"sha": SHA}}
+        if path == f"/commits/{SHA}":
+            return {"parents": [{"sha": "c" * 40}]}
+        return super().request(method, path, data, optional)
+
+    def compare(self, base, head):
+        if base == "b" * 40 and head == SHA:
+            raise PolicyError("Head is behind main")
+        if base == "c" * 40 and head == SHA:
+            return [{"filename": name, "status": "modified"} for name in (MANIFEST, CHANGELOG)]
+        assert (base, head) == ("c" * 40, "b" * 40)
+        return [{"filename": "docs/usage.md", "status": "modified"}]
+
+    def content(self, path, ref):
+        if ref == SHA:
+            if self.tampered and path == MANIFEST:
+                return '{"version":"0.3.1", "unreviewed":true}'
+            return release_changes(
+                super().content(MANIFEST, "c" * 40),
+                super().content(CHANGELOG, "c" * 40),
+                "0.3.0",
+            )[path]
+        return super().content(path, ref)
+
+
+def release_pr():
+    value = pr(ACTIONS_BOT)
+    value["head"]["ref"] = "automation/release-0.3.1"
+    value["body"] = Maintenance.body("0.3.1")
+    value["mergeable_state"] = "blocked"
+    return value
+
+
+def test_stale_generated_pr_uses_native_expected_head_update_and_revalidation():
+    maintenance = Maintenance(StaleGeneratedAPI())
+    assert maintenance.candidate(release_pr(), "b" * 40, "0.3.0") is False
+    assert maintenance.api.writes == [
+        ("PUT", "/pulls/1/update-branch", {"expected_head_sha": SHA}),
+        ("POST", "/actions/workflows/validate.yml/dispatches", {"ref": "automation/release-0.3.1"}),
+    ]
+    assert "awaiting fresh validation" in maintenance.notes[-1]
+
+
+def test_stale_generated_pr_dry_run_cannot_update_or_dispatch():
+    api = StaleGeneratedAPI()
+    api.dry_run = True
+    maintenance = Maintenance(api)
+    assert maintenance.candidate(release_pr(), "b" * 40, "0.3.0") is False
+    assert not api.writes
+
+
+def test_stale_tampered_pr_cannot_update_or_dispatch():
+    maintenance = Maintenance(StaleGeneratedAPI(tampered=True))
+    with pytest.raises(PolicyError, match="Unexpected generated"):
+        maintenance.candidate(release_pr(), "b" * 40, "0.3.0")
+    assert not maintenance.api.writes
+
+
+def test_proven_stale_orphan_branch_is_recovered_without_rewriting_refs(monkeypatch):
+    monkeypatch.setenv("LANBON_RELEASE_PRS_ENABLED", "true")
+    maintenance = Maintenance(StaleGeneratedAPI())
+    maintenance.create_candidate("b" * 40, "0.3.0")
+    assert [path for _, path, _ in maintenance.api.writes] == [
+        "/pulls",
+        "/actions/workflows/validate.yml/dispatches",
+    ]
+    assert "proven generated orphan branch" in maintenance.notes[0]
+
+
+def test_tampered_orphan_branch_requires_review_without_writes(monkeypatch):
+    monkeypatch.setenv("LANBON_RELEASE_PRS_ENABLED", "true")
+    maintenance = Maintenance(StaleGeneratedAPI(tampered=True))
+    with pytest.raises(PolicyError, match="Unexpected generated"):
+        maintenance.create_candidate("b" * 40, "0.3.0")
+    assert not maintenance.api.writes
