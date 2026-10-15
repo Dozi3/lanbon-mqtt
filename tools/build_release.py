@@ -71,7 +71,7 @@ def build_release(expected_tag: str | None = None) -> dict:
     # Stored members avoid platform/zlib-version differences in DEFLATE output.
     # This small component favors portable, independently repeatable checksums.
     with ZipFile(archive, "w", compression=ZIP_STORED) as output:
-        for path in sorted(files):
+        for path in sorted(files, key=lambda path: path.relative_to(ROOT).as_posix()):
             name = path.relative_to(ROOT).as_posix()
             data = path.read_bytes()
             if path.suffix == ".json":
@@ -84,7 +84,7 @@ def build_release(expected_tag: str | None = None) -> dict:
             output.writestr(info, data)
             hashes[name] = hashlib.sha256(data).hexdigest()
     with ZipFile(archive) as saved:
-        if saved.testzip() is not None or set(saved.namelist()) != set(hashes):
+        if saved.testzip() is not None or saved.namelist() != sorted(hashes):
             raise ValueError("Release archive integrity failure")
         for name, digest in hashes.items():
             if hashlib.sha256(saved.read(name)).hexdigest() != digest:
