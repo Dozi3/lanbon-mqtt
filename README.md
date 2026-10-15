@@ -9,8 +9,8 @@ Local controls, reported state and mesh diagnostics for Lanbon devices running
 the **stock, legacy Smart Living MQTT profile**. Set it up through normal Home
 Assistant screens, using the MQTT broker you already have.
 
-**Stable release: `0.3.0`.** Install through HACS
-as a custom repository. Inclusion in the HACS default catalogue is a separate
+Install the [latest stable release](https://github.com/Dozi3/lanbon-mqtt/releases/latest)
+through HACS as a custom repository. Inclusion in the HACS default catalogue is a separate
 process. This community project is not affiliated with Lanbon, Home Assistant
 or HACS.
 
@@ -72,6 +72,10 @@ an MQTT report or a successful command is not proof of physical delivery.
 
 The [illustrated setup guide](SETUP.md) covers discovery, every setting and
 optional network metadata. No YAML or JSON configuration is required.
+
+For manual installation, each GitHub release's **Assets** section contains an
+installable ZIP, `SHA256SUMS` and a build receipt. See the
+[download and checksum instructions](SETUP.md#manual-installation-alternative).
 
 ## Use your devices
 

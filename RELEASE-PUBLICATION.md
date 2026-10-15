@@ -105,6 +105,13 @@ installs on a household server, or restarts Home Assistant.
 
 ### Permissions and stopping automation
 
+Keep main protected with required pull requests, **strict/up-to-date** required
+checks (**Tests, lint and package**, **Hassfest**, **HACS**), administrator
+enforcement, and no force pushes or deletion. Configure these before enabling
+maintenance on a fork; disable maintenance before relaxing them. The merge API
+conditions the expected head SHA, while strict protection guards a concurrent
+base-branch advance.
+
 The privileged maintenance job executes only the policy on protected main.
 Candidate PR files are read as API data; their code and artifacts are never
 executed with the write token. Permissions are limited to repository contents,
