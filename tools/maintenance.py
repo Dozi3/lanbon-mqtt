@@ -18,6 +18,7 @@ import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 MANIFEST = "custom_components/lanbon_mqtt/manifest.json"
@@ -153,6 +154,53 @@ def authentic_validate_run(run, sha, repo):
         and run.get("head_repository", {}).get("full_name") == repo
         and run.get("event") in {"push", "pull_request", "workflow_dispatch"}
     )
+
+
+def latest_statuses(statuses, *, now=None):
+    """Use each legacy context's newest status; stale pending results need review."""
+    now = datetime.now(UTC) if now is None else now
+    require(
+        isinstance(now, datetime) and now.utcoffset() == timedelta(0),
+        "Status freshness clock must be UTC",
+    )
+    latest = {}
+    for item in statuses:
+        context, identifier = item.get("context"), item.get("id")
+        require(
+            isinstance(context, str)
+            and bool(context.strip())
+            and type(identifier) is int
+            and identifier > 0
+            and item.get("state") in {"success", "pending", "failure", "error"},
+            "Malformed legacy status identity or state; human review is required",
+        )
+        timestamp = item.get("updated_at")
+        require(
+            isinstance(timestamp, str)
+            and re.fullmatch(
+                r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)", timestamp
+            ),
+            "Malformed legacy status timestamp; human review is required",
+        )
+        try:
+            updated = datetime.fromisoformat(timestamp)
+        except ValueError:
+            raise PolicyError(
+                "Malformed legacy status timestamp; human review is required"
+            ) from None
+        require(
+            updated <= now + timedelta(minutes=5),
+            "Legacy status timestamp is in the future; human review is required",
+        )
+        if context not in latest or identifier > latest[context][0]["id"]:
+            latest[context] = (item, updated)
+    for context, (item, updated) in latest.items():
+        require(
+            item["state"] != "pending" or now - updated <= timedelta(hours=24),
+            f"Legacy status {context!r} has been pending for over 24 hours; "
+            "human review is required",
+        )
+    return [latest[context][0] for context in sorted(latest)]
 
 
 def check_ci(sha, checks, statuses, runs, repo):
@@ -336,9 +384,7 @@ class Maintenance:
             return False
         require(newest.get("conclusion") == "success", "Latest executable Validate run failed")
         checks = self.api.pages(f"/commits/{sha}/check-runs?filter=latest", "check_runs")
-        statuses = self.api.pages(f"/commits/{sha}/statuses")
-        # The statuses endpoint includes superseded statuses; conservative gating
-        # deliberately leaves such PRs for human review rather than guessing.
+        statuses = latest_statuses(self.api.pages(f"/commits/{sha}/statuses"))
         for check in checks:
             if check.get("status") == "completed":
                 require(
@@ -504,6 +550,11 @@ class Maintenance:
 
     @classmethod
     def matches_body(cls, body, target):
+        """Only the canonical declaration is semantic; the known summary is decoration.
+
+        The suffix cannot select a version, commit or files, or grant a merge.
+        Exact bot identity, generated contents and CI proofs remain binding.
+        """
         canonical = cls.body(target)
         return isinstance(body, str) and (
             body == canonical or body.startswith(canonical + "\n\n## Summary by Sourcery\n\n")

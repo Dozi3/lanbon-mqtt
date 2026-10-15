@@ -2,6 +2,7 @@
 
 import copy
 import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -16,6 +17,7 @@ from tools.maintenance import (
     check_ci,
     check_pr_identity,
     check_ruff_update,
+    latest_statuses,
     next_patch,
     release_changes,
     safe_paths,
@@ -992,3 +994,88 @@ def test_known_summary_append_also_preserves_merged_release_recovery_identity():
     assert Maintenance(ReadOnlyAPI()).merged_release_pr(value, "0.3.1")
     value["user"]["id"] = 123
     assert not Maintenance(ReadOnlyAPI()).merged_release_pr(value, "0.3.1")
+
+
+STATUS_NOW = datetime(2026, 10, 15, 12, tzinfo=UTC)
+
+
+def legacy_status(identifier, state, context="review", *, updated=None):
+    return {
+        "id": identifier,
+        "context": context,
+        "state": state,
+        "updated_at": (updated or STATUS_NOW).isoformat().replace("+00:00", "Z"),
+    }
+
+
+@pytest.mark.parametrize("old_state", ["pending", "error", "failure"])
+def test_superseded_legacy_pending_or_failure_cannot_block_newer_success(old_state):
+    old = legacy_status(10, old_state, updated=STATUS_NOW - timedelta(days=2))
+    success = legacy_status(11, "success")
+    assert latest_statuses([success, old], now=STATUS_NOW) == [success]
+    checks, runs = ci()
+    check_ci(SHA, checks, latest_statuses([old, success], now=STATUS_NOW), runs, REPO)
+
+
+def test_newest_legacy_failure_still_blocks():
+    statuses = latest_statuses(
+        [legacy_status(11, "failure"), legacy_status(10, "success")], now=STATUS_NOW
+    )
+    assert statuses[0]["state"] == "failure"
+    checks, runs = ci()
+    with pytest.raises(PolicyError, match="legacy commit status"):
+        check_ci(SHA, checks, statuses, runs, REPO)
+
+
+def test_distinct_legacy_contexts_preserve_fresh_pending_results():
+    pending = legacy_status(10, "pending", "review", updated=STATUS_NOW - timedelta(minutes=10))
+    success = legacy_status(11, "success", "other-check")
+    assert latest_statuses([pending, success], now=STATUS_NOW) == [success, pending]
+
+
+def test_latest_pending_older_than_24_hours_requires_visible_manual_review():
+    status = legacy_status(10, "pending", updated=STATUS_NOW - timedelta(hours=24, seconds=1))
+    with pytest.raises(PolicyError, match="pending for over 24 hours; human review"):
+        latest_statuses([status], now=STATUS_NOW)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("id", None),
+        ("id", 0),
+        ("id", True),
+        ("id", "10"),
+        ("context", ""),
+        ("context", "  "),
+        ("context", None),
+        ("state", "unknown"),
+        ("updated_at", None),
+        ("updated_at", "not-a-timestamp"),
+        ("updated_at", "2026-13-15T12:00:00Z"),
+        ("updated_at", "2026-10-15T12:00:00"),
+        ("updated_at", "2026-10-15T12:00:00+01:00"),
+    ],
+)
+def test_malformed_legacy_status_data_fails_closed(field, value):
+    status = legacy_status(10, "success")
+    status[field] = value
+    with pytest.raises(PolicyError, match="human review"):
+        latest_statuses([status], now=STATUS_NOW)
+
+
+def test_future_legacy_timestamp_beyond_clock_tolerance_fails_closed():
+    status = legacy_status(10, "pending", updated=STATUS_NOW + timedelta(minutes=5, seconds=1))
+    with pytest.raises(PolicyError, match="timestamp is in the future"):
+        latest_statuses([status], now=STATUS_NOW)
+
+
+def test_approved_uses_only_latest_legacy_context_state():
+    now = datetime.now(UTC)
+    statuses = [
+        legacy_status(10, "pending", updated=now - timedelta(days=2)),
+        legacy_status(11, "success", updated=now),
+    ]
+    api = ApprovalRunAPI([validation_run(100)], statuses=statuses)
+    assert Maintenance(api).approved(pr(), "b" * 40) is True
+    assert not api.writes
