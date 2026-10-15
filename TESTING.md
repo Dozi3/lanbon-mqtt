@@ -14,8 +14,13 @@ uv run --locked python -m ruff check .
 uv run --locked python -m ruff format --check .
 ```
 
-The lock targets Python 3.14 and Home Assistant 2026.9.3. MQTT tests need local
-loopback access. Check the workflows in `.github/workflows` for additional
+The lock targets Python 3.14 and Home Assistant 2026.10.1, with its matching
+custom-component pytest plugin. Home Assistant, MQTT test support and lint/test
+tools are development dependencies; this project has no installable runtime
+dependencies, and the integration manifest also has no extra requirements.
+MQTT tests need Mosquitto on `PATH` (or `MOSQUITTO_EXE` set to its executable)
+and local loopback access. CI installs a real isolated broker and rejects
+skipped tests. Check the workflows in `.github/workflows` for additional
 public repository, Home Assistant/HACS validation and release checks. Current
 results are visible under [GitHub Actions](https://github.com/Dozi3/lanbon-mqtt/actions).
 
@@ -62,6 +67,20 @@ the same test count.
 Release checks must validate the final combined source and archive. Neither
 historical green tests nor a successful metadata validator substitutes for
 fresh runtime checks when behavior changes.
+
+The native setup wizard was also completed on an isolated Core 2026.10.1
+installation using its on-screen fields and synthetic MQTT peers. A dimmer,
+a two-gang relay and a single relay exposed four available controls. The
+optional root form was captured as an unsaved draft; its example address was
+never contacted. Five screenshots show that native UI, and the HACS example
+is attributed to its official documentation.
+
+The initial public HACS check and all 524 Linux software tests passed.
+Hassfest's manifest-ordering finding was corrected, after which all three
+public validation jobs passed. The development lock was then refreshed to the
+supported Home Assistant 2026.10.1 dependency set, including PyJWT 2.15.1 and
+cryptography 50.0.1, without overriding Home Assistant's declared requirements.
+Consult the linked Actions runs for validation of the final release commit.
 
 ## Commission your own installation
 

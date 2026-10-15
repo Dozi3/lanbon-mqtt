@@ -35,7 +35,7 @@ firmware, not a claim that every Lanbon dimmer, load or mesh has been commission
 | Surface | Requirement or evidence |
 |---|---|
 | Minimum Home Assistant | 2026.9.3, as declared in `hacs.json` |
-| Locked software test runtime | Python 3.14 / Home Assistant 2026.9.3 |
+| Locked software test runtime | Python 3.14 / Home Assistant 2026.10.1 |
 | Native runtime acceptance | Isolated HAOS/Core 2026.10.1 with real MQTT transport |
 | Installation methods | HACS custom repository or component directory copied into Home Assistant's configuration |
 | Broker | Native Home Assistant MQTT connection; device/root and HA must reach the same relevant topic space |
