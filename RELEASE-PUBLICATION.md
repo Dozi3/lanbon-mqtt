@@ -56,11 +56,16 @@ not expand the physical commissioning evidence in [TESTING.md](TESTING.md).
 ## Automatic maintenance
 
 [Safe maintenance](https://github.com/Dozi3/lanbon-mqtt/actions/workflows/maintenance.yml)
-runs daily at 04:47 UTC and after successful **Validate** runs. A maintainer can
+runs hourly at minute 47 and after successful **Validate** runs. A maintainer can
 also send a repository dispatch; it always uses the default-branch workflow
 definition. The job summary explains
 what was eligible, blocked or changed. It uses GitHub's short-lived repository
 token; no maintainer password or personal access token is stored.
+
+The scheduled sweep also advances bot-created PRs when GitHub suppresses
+follow-up workflow events. Publication can span multiple sweeps. GitHub may
+delay scheduled jobs, and disables public-repository schedules after 60 days
+without repository activity; re-enable the workflow if that happens.
 
 ### What can merge automatically
 
@@ -96,6 +101,14 @@ tags are never moved or silently repackaged. Interrupted draft uploads are
 verified and resumed on the same tag; published assets are byte-verified and
 never overwritten. Publishing an older stable tag does not replace a newer
 latest release.
+
+Some bot-created PRs also receive an approval-required native PR workflow.
+After verifying the bot, exact content, head, workflow ID and PR association,
+maintenance may request one native rerun of that original workflow. It awaits
+real test results and preserves every merge gate. It never approves/deletes
+the blocked run, fabricates passing checks or loops if the rerun still requires
+owner action. Sourcery's known appended PR summary is accepted without changing
+the canonical release declaration or source-content checks.
 
 An unreleased runtime, workflow, test or packaging change blocks unattended
 release until a maintainer performs a reviewed release. Documentation-only

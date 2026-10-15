@@ -775,3 +775,220 @@ def test_tampered_orphan_branch_requires_review_without_writes(monkeypatch):
     with pytest.raises(PolicyError, match="Unexpected generated"):
         maintenance.create_candidate("b" * 40, "0.3.0")
     assert not maintenance.api.writes
+
+
+class ApprovalRunAPI(ReadOnlyAPI):
+    dry_run = False
+
+    def __init__(self, runs, *, checks=None, statuses=None):
+        super().__init__()
+        self.runs = runs
+        self.checks = ci()[0] if checks is None else checks
+        self.statuses = [] if statuses is None else statuses
+        self.writes = []
+
+    def pages(self, path, key=None):
+        if "workflows/validate.yml/runs" in path:
+            return self.runs
+        if "check-runs" in path:
+            return self.checks
+        if path.endswith("/statuses"):
+            return self.statuses
+        raise AssertionError(path)
+
+    def request(self, method, path, data=None, optional=False):
+        if method != "GET":
+            self.writes.append((method, path, data))
+            return None
+        if path == "/pulls/1":
+            return pr()
+        if path == "/actions/workflows/validate.yml":
+            return {"id": 321}
+        return super().request(method, path, data, optional)
+
+
+def validation_run(
+    identifier, event="workflow_dispatch", status="completed", conclusion="success", *, attempt=1
+):
+    run = ci()[1][0]
+    run.update(
+        id=identifier,
+        event=event,
+        status=status,
+        conclusion=conclusion,
+        actor=bot(DEPENDABOT),
+        pull_requests=[{"number": 1}],
+        workflow_id=321,
+        run_attempt=attempt,
+    )
+    return run
+
+
+def test_original_approval_gated_run_is_retried_even_after_newer_successful_dispatch():
+    api = ApprovalRunAPI(
+        [validation_run(300), validation_run(200, "pull_request", conclusion="action_required")]
+    )
+    maintenance = Maintenance(api)
+    assert maintenance.approved(pr(), "b" * 40) is False
+    assert api.writes == [("POST", "/actions/runs/200/rerun", {})]
+    assert "original Validate run 200 rerun" in maintenance.notes[-1]
+
+
+@pytest.mark.parametrize("state", ["queued", "in_progress", "waiting", "completed"])
+def test_newer_dispatch_does_not_justify_another_native_rerun(state):
+    api = ApprovalRunAPI(
+        [
+            validation_run(100),
+            validation_run(200, "pull_request", conclusion="action_required", attempt=2),
+            validation_run(201, status=state, conclusion=None),
+        ]
+    )
+    with pytest.raises(PolicyError, match="human action is required"):
+        Maintenance(api).approved(pr(), "b" * 40)
+    assert not api.writes
+
+
+def test_newer_failed_dispatch_does_not_justify_another_native_rerun():
+    api = ApprovalRunAPI(
+        [
+            validation_run(200, "pull_request", conclusion="action_required", attempt=2),
+            validation_run(201, conclusion="failure"),
+        ]
+    )
+    with pytest.raises(PolicyError, match="human action is required"):
+        Maintenance(api).approved(pr(), "b" * 40)
+    assert not api.writes
+
+
+def test_natural_approval_only_run_retries_original_run():
+    api = ApprovalRunAPI([validation_run(200, "pull_request", conclusion="action_required")])
+    assert Maintenance(api).approved(pr(), "b" * 40) is False
+    assert len(api.writes) == 1
+    assert api.writes[0] == ("POST", "/actions/runs/200/rerun", {})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("repository", {"full_name": "foreign/repo"}),
+        ("head_repository", {"full_name": "foreign/repo"}),
+        ("path", ".github/workflows/untrusted.yml"),
+        ("head_sha", "f" * 40),
+        ("name", "Untrusted workflow"),
+    ],
+)
+def test_foreign_or_stale_approval_run_cannot_justify_refresh(field, value):
+    untrusted = validation_run(200, "pull_request", conclusion="action_required")
+    untrusted[field] = value
+    api = ApprovalRunAPI([validation_run(100), untrusted])
+    assert Maintenance(api).approved(pr(), "b" * 40) is True
+    assert not api.writes
+
+
+def test_approval_gated_dry_run_does_not_retry_dispatch_or_approve():
+    api = ApprovalRunAPI(
+        [validation_run(100), validation_run(200, "pull_request", conclusion="action_required")]
+    )
+    api.dry_run = True
+    maintenance = Maintenance(api)
+    assert maintenance.approved(pr(), "b" * 40) is False
+    assert not api.writes
+    assert maintenance.notes[-1] == "Dry run: would rerun original approval-gated Validate run 200"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("actor", {"login": "dependabot[bot]", "id": 123, "type": "Bot"}),
+        ("actor", {"login": "other[bot]", "id": 49699333, "type": "Bot"}),
+        ("actor", {"login": "dependabot[bot]", "id": 49699333, "type": "User"}),
+        ("pull_requests", [{"number": 2}]),
+        ("pull_requests", []),
+        ("workflow_id", 999),
+        ("id", 0),
+    ],
+)
+def test_native_rerun_requires_original_bot_workflow_and_pull_request_provenance(field, value):
+    run = validation_run(200, "pull_request", conclusion="action_required")
+    run[field] = value
+    api = ApprovalRunAPI([run])
+    with pytest.raises(PolicyError, match="provenance could not be proved"):
+        Maintenance(api).approved(pr(), "b" * 40)
+    assert not api.writes
+
+
+@pytest.mark.parametrize("attempt", [None, 0, 2, 3])
+def test_native_rerun_never_retries_an_unknown_or_already_retried_attempt(attempt):
+    run = validation_run(200, "pull_request", conclusion="action_required", attempt=attempt)
+    api = ApprovalRunAPI([run])
+    with pytest.raises(PolicyError, match="human action is required"):
+        Maintenance(api).approved(pr(), "b" * 40)
+    assert not api.writes
+
+
+def test_actual_failed_validation_still_blocks_without_rerun():
+    api = ApprovalRunAPI([validation_run(201, conclusion="failure")])
+    with pytest.raises(PolicyError, match="Latest executable Validate run failed"):
+        Maintenance(api).approved(pr(), "b" * 40)
+    assert not api.writes
+
+
+def test_normal_running_validation_is_a_quiet_wait():
+    api = ApprovalRunAPI([validation_run(200, "pull_request", "in_progress", None)])
+    assert Maintenance(api).approved(pr(), "b" * 40) is False
+    assert not api.writes
+
+
+def test_pending_review_check_waits_without_red_job_or_merge():
+    checks = ci()[0]
+    checks.append({"name": "Reviewer", "head_sha": SHA, "status": "queued", "conclusion": None})
+    api = ApprovalRunAPI([validation_run(100)], checks=checks)
+    assert Maintenance(api).approved(pr(), "b" * 40) is False
+    assert not api.writes
+
+
+def test_completed_review_failure_still_blocks_while_another_check_is_pending():
+    checks = ci()[0]
+    checks.extend(
+        [
+            {"name": "Reviewer", "head_sha": SHA, "status": "completed", "conclusion": "failure"},
+            {"name": "Other", "head_sha": SHA, "status": "queued", "conclusion": None},
+        ]
+    )
+    api = ApprovalRunAPI([validation_run(100)], checks=checks)
+    with pytest.raises(PolicyError, match="A completed check failed"):
+        Maintenance(api).approved(pr(), "b" * 40)
+    assert not api.writes
+
+
+@pytest.mark.parametrize("suffix", ["", "\n\n## Summary by Sourcery\n\n- Documentation update.\n"])
+def test_canonical_release_body_accepts_only_known_app_summary_append(suffix):
+    canonical = Maintenance.body("0.3.1")
+    assert Maintenance.matches_body(canonical + suffix, "0.3.1")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        Maintenance.body("0.3.1").replace("maintenance-release:v1", "maintenance-release:v2"),
+        Maintenance.body("0.3.1").replace(
+            "runtime changes require human review", "automatic runtime changes"
+        ),
+        Maintenance.body("0.3.1") + "\n\n## Untrusted append\n\nText.",
+        Maintenance.body("0.3.1") + "\n\n## Summary by Sourcery\nUnrecognized heading delimiter.",
+        Maintenance.body("0.3.1")[:-1],
+        Maintenance.body("0.3.2"),
+        None,
+    ],
+)
+def test_changed_truncated_or_unrecognized_release_body_cannot_match(body):
+    assert not Maintenance.matches_body(body, "0.3.1")
+
+
+def test_known_summary_append_also_preserves_merged_release_recovery_identity():
+    value = release_pr()
+    value.update(state="closed", merged_at="2026-10-15T12:00:00Z", merge_commit_sha=SHA)
+    value["body"] += "\n\n## Summary by Sourcery\n\n- Release notes.\n"
+    assert Maintenance(ReadOnlyAPI()).merged_release_pr(value, "0.3.1")
+    value["user"]["id"] = 123
+    assert not Maintenance(ReadOnlyAPI()).merged_release_pr(value, "0.3.1")

@@ -2,7 +2,7 @@ name: Safe maintenance
 
 on:
   schedule:
-    - cron: "47 4 * * *"
+    - cron: "47 * * * *"
   workflow_run:
     workflows: [Validate]
     types: [completed]
