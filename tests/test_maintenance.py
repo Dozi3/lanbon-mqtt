@@ -170,6 +170,17 @@ def test_unready_pull_requests_are_rejected(key, value):
         check_pr_identity(changed, REPO, DEPENDABOT)
 
 
+def test_prevalidation_identity_allows_blocked_checks_but_never_weakens_merge_gate():
+    value = pr()
+    value.update(mergeable=None, mergeable_state="blocked")
+    check_pr_identity(value, REPO, DEPENDABOT, ready=False)
+    with pytest.raises(PolicyError, match="clean, unblocked merge"):
+        check_pr_identity(value, REPO, DEPENDABOT)
+    value["draft"] = True
+    with pytest.raises(PolicyError, match="not ready"):
+        check_pr_identity(value, REPO, DEPENDABOT, ready=False)
+
+
 @pytest.mark.parametrize("side", ["base", "head"])
 def test_foreign_repository_is_rejected(side):
     value = pr()
@@ -431,20 +442,244 @@ def test_api_compare_rejects_truncated_or_diverged_results(monkeypatch):
             api.compare("main", SHA)
 
 
-def test_disabled_pr_creation_stops_before_any_branch_or_commit_mutation():
+@pytest.mark.parametrize("setting", [None, "false", "TRUE"])
+def test_disabled_pr_creation_stops_before_any_branch_or_commit_mutation(setting, monkeypatch):
+    if setting is None:
+        monkeypatch.delenv("LANBON_RELEASE_PRS_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("LANBON_RELEASE_PRS_ENABLED", setting)
+
     class DisabledAPI(ReadOnlyAPI):
         dry_run = False
-
-        def request(self, method, path, data=None, optional=False):
-            if path == "/actions/permissions/workflow":
-                self.calls.append(path)
-                return {"can_approve_pull_request_reviews": False}
-            return super().request(method, path, data, optional)
 
     maintenance = Maintenance(DisabledAPI())
     with pytest.raises(PolicyError, match="pull-request creation is disabled"):
         maintenance.create_candidate("b" * 40, "0.3.0")
-    assert maintenance.api.calls == [
-        "/git/ref/heads/automation/release-0.3.1",
-        "/actions/permissions/workflow",
+    assert maintenance.api.calls == ["/git/ref/heads/automation/release-0.3.1"]
+
+
+def test_explicit_release_pr_opt_in_permits_expected_creation_and_dispatch(monkeypatch):
+    monkeypatch.setenv("LANBON_RELEASE_PRS_ENABLED", "true")
+
+    class EnabledAPI(ReadOnlyAPI):
+        dry_run = False
+
+        def __init__(self):
+            super().__init__()
+            self.writes = []
+
+        def request(self, method, path, data=None, optional=False):
+            if method == "POST":
+                self.writes.append((path, data))
+                return {"sha": "created", "number": 10}
+            if path == f"/git/commits/{'b' * 40}":
+                return {"tree": {"sha": "original-tree"}}
+            return super().request(method, path, data, optional)
+
+    maintenance = Maintenance(EnabledAPI())
+    maintenance.create_candidate("b" * 40, "0.3.0")
+    assert [path for path, _ in maintenance.api.writes] == [
+        "/git/trees",
+        "/git/commits",
+        "/git/refs",
+        "/pulls",
+        "/actions/workflows/validate.yml/dispatches",
     ]
+    assert maintenance.api.writes[-1][1] == {"ref": "automation/release-0.3.1"}
+    assert all("permissions" not in path for path in maintenance.api.calls)
+
+
+@pytest.mark.parametrize("validate_main", [True, False])
+def test_release_candidate_merge_can_skip_redundant_main_validation(validate_main):
+    class MergeAPI(ReadOnlyAPI):
+        dry_run = False
+
+        def __init__(self):
+            super().__init__()
+            self.writes = []
+
+        def request(self, method, path, data=None, optional=False):
+            if method == "GET" and path == "/git/ref/heads/main":
+                return {"object": {"sha": "b" * 40}}
+            self.writes.append((method, path, data))
+            if method == "PUT" and path == "/pulls/1/merge":
+                return {"merged": True, "sha": SHA}
+            assert method == "POST" and path == "/actions/workflows/validate.yml/dispatches"
+
+    maintenance = Maintenance(MergeAPI())
+    assert maintenance.merge(pr(), validate_main=validate_main) == SHA
+    assert maintenance.api.writes[0] == (
+        "PUT",
+        "/pulls/1/merge",
+        {"sha": SHA, "merge_method": "squash"},
+    )
+    assert len(maintenance.api.writes) == (2 if validate_main else 1)
+
+
+@pytest.mark.parametrize("status", ["queued", "in_progress", "waiting", "requested"])
+def test_running_exact_tag_release_is_not_dispatched_twice(status):
+    class PublishingAPI(ReadOnlyAPI):
+        dry_run = False
+
+        def request(self, method, path, data=None, optional=False):
+            assert method == "GET", "An existing release run must prevent every write"
+            if path == f"/commits/{SHA}":
+                return {"parents": [{"sha": "parent"}]}
+            if path == "/releases/tags/v0.3.1":
+                return None
+            if path == "/git/ref/tags/v0.3.1":
+                return {"object": {"sha": SHA, "type": "commit"}}
+            raise AssertionError(path)
+
+        def compare(self, base, head):
+            if head == SHA:
+                return [{"filename": name, "status": "modified"} for name in (MANIFEST, CHANGELOG)]
+            return [{"filename": "docs/usage.md", "status": "modified"}]
+
+        def content(self, path, ref):
+            if ref == SHA:
+                return release_changes(
+                    super().content(MANIFEST, "parent"),
+                    super().content(CHANGELOG, "parent"),
+                    "0.3.0",
+                )[path]
+            return super().content(path, ref)
+
+        def pages(self, path, key=None):
+            if path == f"/commits/{SHA}/pulls":
+                value = pr(ACTIONS_BOT)
+                value.update(
+                    state="closed",
+                    merged_at="2026-10-15T12:00:00Z",
+                    merge_commit_sha=SHA,
+                    body=Maintenance.body("0.3.1"),
+                )
+                value["head"]["ref"] = "automation/release-0.3.1"
+                return [value]
+            if path == f"/actions/workflows/release.yml/runs?head_sha={SHA}":
+                return [
+                    {
+                        "head_sha": SHA,
+                        "head_branch": "v0.3.1",
+                        "event": "workflow_dispatch",
+                        "status": status,
+                    }
+                ]
+            raise AssertionError(path)
+
+    maintenance = Maintenance(PublishingAPI())
+    maintenance.publish(SHA, "stable", "0.3.0")
+    assert maintenance.notes == ["Release v0.3.1 is awaiting an existing release.yml run"]
+
+
+@pytest.mark.parametrize(
+    "kind", ["draft", "prerelease", "published_incomplete", "published_complete", "bad_tag"]
+)
+def test_draft_retries_and_published_release_integrity_gates(kind, monkeypatch):
+    class DraftReleaseAPI(ReadOnlyAPI):
+        dry_run = False
+
+        def __init__(self):
+            super().__init__()
+            self.writes = []
+
+        def request(self, method, path, data=None, optional=False):
+            if method != "GET":
+                self.writes.append((method, path, data))
+                return None
+            if path == f"/commits/{SHA}":
+                return {"parents": [{"sha": "parent"}]}
+            if path == "/releases/tags/v0.3.1":
+                return {
+                    "draft": kind == "draft",
+                    "prerelease": kind == "prerelease",
+                    "assets": [
+                        {"name": name, "state": "uploaded", "size": 100}
+                        for name in ("lanbon-mqtt-0.3.1.zip", "SHA256SUMS", "release-receipt.json")
+                    ]
+                    if kind in {"published_complete", "bad_tag"}
+                    else [],
+                }
+            if path == "/git/ref/tags/v0.3.1":
+                return {"object": {"sha": "wrong" if kind == "bad_tag" else SHA, "type": "commit"}}
+            raise AssertionError(path)
+
+        def pages(self, path, key=None):
+            if path == f"/commits/{SHA}/pulls":
+                value = pr(ACTIONS_BOT)
+                value.update(
+                    state="closed",
+                    merged_at="2026-10-15T12:00:00Z",
+                    merge_commit_sha=SHA,
+                    body=Maintenance.body("0.3.1"),
+                )
+                value["head"]["ref"] = "automation/release-0.3.1"
+                return [value]
+            if path == f"/actions/workflows/release.yml/runs?head_sha={SHA}":
+                return [
+                    {
+                        "head_sha": SHA,
+                        "head_branch": "v0.3.1",
+                        "event": "workflow_dispatch",
+                        "status": "completed",
+                        "conclusion": "failure",
+                    }
+                ]
+            raise AssertionError(path)
+
+    maintenance = Maintenance(DraftReleaseAPI())
+    # Other tests exercise these source policy gates; isolate draft recovery here.
+    monkeypatch.setattr(maintenance, "safe_changes", lambda *args: None)
+    monkeypatch.setattr(maintenance, "check_generated", lambda *args: None)
+    if kind == "draft":
+        maintenance.publish(SHA, "stable", "0.3.0")
+        assert maintenance.api.writes == [
+            ("POST", "/actions/workflows/release.yml/dispatches", {"ref": "v0.3.1"})
+        ]
+    elif kind == "published_complete":
+        maintenance.publish(SHA, "stable", "0.3.0")
+        assert maintenance.notes == ["Stable release v0.3.1 already exists; nothing to publish"]
+        assert not maintenance.api.writes
+    else:
+        with pytest.raises(PolicyError):
+            maintenance.publish(SHA, "stable", "0.3.0")
+        assert not maintenance.api.writes
+
+
+def test_main_advance_immediately_before_merge_blocks_every_write():
+    value = pr()
+    value["base"]["sha"] = "old-main"
+    maintenance = Maintenance(ReadOnlyAPI())
+    with pytest.raises(PolicyError, match="Main advanced before merge"):
+        maintenance.merge(value)
+    assert maintenance.api.calls == ["/git/ref/heads/main"]
+
+
+def test_later_main_commit_recovers_publication_at_exact_merged_release_sha(monkeypatch):
+    class AdvancedMainAPI(ReadOnlyAPI):
+        def content(self, path, ref):
+            if path == MANIFEST and ref == "b" * 40:
+                return '{"version":"0.3.1"}'
+            return super().content(path, ref)
+
+        def pages(self, path, key=None):
+            assert path == "/pulls?state=closed&base=main"
+            value = pr(ACTIONS_BOT)
+            value.update(
+                state="closed",
+                merged_at="2026-10-15T12:00:00Z",
+                merge_commit_sha=SHA,
+                body=Maintenance.body("0.3.1"),
+            )
+            value["head"]["ref"] = "automation/release-0.3.1"
+            return [value]
+
+        def compare(self, base, head):
+            assert (base, head) == (SHA, "b" * 40)
+            return [{"filename": "docs/usage.md", "status": "modified"}]
+
+    maintenance = Maintenance(AdvancedMainAPI())
+    publications = []
+    monkeypatch.setattr(maintenance, "publish", lambda *args: publications.append(args))
+    maintenance.run()
+    assert publications == [(SHA, "stable", "0.3.0")]

@@ -56,8 +56,9 @@ not expand the physical commissioning evidence in [TESTING.md](TESTING.md).
 ## Automatic maintenance
 
 [Safe maintenance](https://github.com/Dozi3/lanbon-mqtt/actions/workflows/maintenance.yml)
-runs daily at 04:47 UTC, after successful **Validate** runs, and manually through
-**Run workflow**. Manual runs default to **dry run**. The job summary explains
+runs daily at 04:47 UTC and after successful **Validate** runs. A maintainer can
+also send a repository dispatch; it always uses the default-branch workflow
+definition. The job summary explains
 what was eligible, blocked or changed. It uses GitHub's short-lived repository
 token; no maintainer password or personal access token is stored.
 
@@ -91,8 +92,10 @@ after the policy rechecks its exact generated content, bot author, base/head,
 and successful checks. It then creates a matching immutable tag and explicitly
 dispatches **Release** on that tag. Release repeats validation and compares the
 archive with the tested artifact before publishing a stable release. Existing
-tags are never moved or silently repackaged. Interrupted publication can be
-retried on the same verified tag.
+tags are never moved or silently repackaged. Interrupted draft uploads are
+verified and resumed on the same tag; published assets are byte-verified and
+never overwritten. Publishing an older stable tag does not replace a newer
+latest release.
 
 An unreleased runtime, workflow, test or packaging change blocks unattended
 release until a maintainer performs a reviewed release. Documentation-only
@@ -105,14 +108,32 @@ installs on a household server, or restarts Home Assistant.
 The privileged maintenance job executes only the policy on protected main.
 Candidate PR files are read as API data; their code and artifacts are never
 executed with the write token. Permissions are limited to repository contents,
-PRs, workflow dispatch and reading checks. The job never approves PR reviews or
+PRs, workflow dispatch and reading checks/statuses. The job never approves PR reviews or
 bypasses protection. GitHub's combined **Allow GitHub Actions to create and
 approve pull requests** setting is needed to create release PRs; the policy
 only uses its creation capability.
 
+Release-PR creation also requires the repository Actions variable
+`LANBON_RELEASE_PRS_ENABLED` to be exactly `true`. It is unset by default and
+must be enabled by the owner only after approving the combined GitHub setting.
+Unset it or set it to `false` to stop version-PR creation while retaining
+eligible dependency merges. The token cannot inspect administrator settings,
+so the helper does not request administrator access to perform this check.
+
 To stop automatic merges and version PRs, open **Actions → Safe maintenance →
 ⋯ → Disable workflow**. Existing releases remain downloadable. Re-enable it
-there when ready; inspect a manual dry run before resuming. The separate
+there when ready; inspect a dry run before resuming. With an authenticated
+GitHub CLI, use:
+
+```sh
+gh api --method POST repos/Dozi3/lanbon-mqtt/dispatches -f event_type=lanbon-maintenance-dry-run
+```
+
+For an immediate active run, use `event_type=lanbon-maintenance` instead. This
+dispatch mechanism cannot choose a different workflow branch. Inspect the run
+under **Actions → Safe maintenance**. Stale generated branches/PRs and an
+unexpected version transition stop safely for maintainer inspection; do not
+force a version tag or disable protection to recover them. The separate
 **Release** workflow publishes only explicit version tags, and rejects branch
 dispatches.
 

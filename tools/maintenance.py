@@ -131,16 +131,17 @@ def check_ruff_update(before_project, after_project, before_lock, after_lock):
     require(normalized[0] == normalized[1], "Another lock package or metadata changed")
 
 
-def check_pr_identity(pr, repo, bot):
+def check_pr_identity(pr, repo, bot, *, ready=True):
     require(is_bot(pr.get("user", {}), bot), "Pull request is not from the expected GitHub bot")
     require(pr.get("state") == "open" and not pr.get("draft"), "Pull request is not ready")
     for side in ("base", "head"):
         require(pr.get(side, {}).get("repo", {}).get("full_name") == repo, "Foreign repository")
     require(pr["base"].get("ref") == "main", "Pull request does not target main")
-    require(
-        pr.get("mergeable") is True and pr.get("mergeable_state") == "clean",
-        "GitHub has not confirmed a clean, unblocked merge",
-    )
+    if ready:
+        require(
+            pr.get("mergeable") is True and pr.get("mergeable_state") == "clean",
+            "GitHub has not confirmed a clean, unblocked merge",
+        )
 
 
 def check_ci(sha, checks, statuses, runs, repo):
@@ -355,7 +356,11 @@ class Maintenance:
             )
         return files
 
-    def merge(self, pr):
+    def merge(self, pr, *, validate_main=True):
+        require(
+            self.head() == pr["base"]["sha"],
+            "Main advanced before merge; leave this pull request for fresh validation",
+        )
         if self.api.dry_run:
             self.note(f"Dry run: would squash merge PR #{pr['number']} at {pr['head']['sha']}")
             return None
@@ -366,7 +371,8 @@ class Maintenance:
         )
         require(result.get("merged") is True, "GitHub did not confirm the merge")
         self.note(f"Merged PR #{pr['number']} at {result['sha']}")
-        self.dispatch("validate.yml", "main")
+        if validate_main:
+            self.dispatch("validate.yml", "main")
         return result["sha"]
 
     def expected(self, main, stable_version):
@@ -377,7 +383,7 @@ class Maintenance:
         )
 
     def candidate(self, pr, main, stable_version):
-        check_pr_identity(pr, self.api.repo, ACTIONS_BOT)
+        check_pr_identity(pr, self.api.repo, ACTIONS_BOT, ready=False)
         target = next_patch(stable_version)
         require(
             pr["head"].get("ref") == f"automation/release-{target}", "Unexpected release branch"
@@ -403,6 +409,20 @@ class Maintenance:
             "Device runtime changes require human review."
         )
 
+    def merged_release_pr(self, pr, target):
+        return (
+            is_bot(pr.get("user", {}), ACTIONS_BOT)
+            and pr.get("state") == "closed"
+            and bool(pr.get("merged_at"))
+            and isinstance(pr.get("merge_commit_sha"), str)
+            and re.fullmatch(r"[0-9a-f]{40}", pr["merge_commit_sha"]) is not None
+            and pr.get("base", {}).get("ref") == "main"
+            and pr.get("base", {}).get("repo", {}).get("full_name") == self.api.repo
+            and pr.get("head", {}).get("repo", {}).get("full_name") == self.api.repo
+            and pr.get("head", {}).get("ref") == f"automation/release-{target}"
+            and pr.get("body") == self.body(target)
+        )
+
     def publish(self, sha, stable_sha, stable_version):
         """Recover a merge/tag/dispatch crash only from the exact generated bot PR."""
         target = next_patch(stable_version)
@@ -414,26 +434,15 @@ class Maintenance:
         prs = self.api.pages(f"/commits/{sha}/pulls")
         require(
             any(
-                is_bot(pr.get("user", {}), ACTIONS_BOT)
-                and pr.get("merged_at")
-                and pr.get("merge_commit_sha") == sha
-                and pr.get("base", {}).get("ref") == "main"
-                and pr.get("base", {}).get("repo", {}).get("full_name") == self.api.repo
-                and pr.get("head", {}).get("repo", {}).get("full_name") == self.api.repo
-                and pr.get("head", {}).get("ref") == f"automation/release-{target}"
-                and pr.get("body") == self.body(target)
+                self.merged_release_pr(pr, target) and pr.get("merge_commit_sha") == sha
                 for pr in prs
             ),
             "No matching merged GitHub Actions release PR exists",
         )
         tag = f"v{target}"
         release = self.api.request("GET", f"/releases/tags/{tag}", optional=True)
-        if release:
-            require(
-                not release.get("draft") and not release.get("prerelease"), "Release is not stable"
-            )
-            self.note(f"Stable release {tag} already exists; nothing to publish")
-            return
+        # A failed upload can leave a draft. The release workflow verifies and
+        # resumes that draft; this helper only redispatches its immutable tag.
         existing = self.api.request("GET", f"/git/ref/tags/{tag}", optional=True)
         if existing:
             require(
@@ -441,6 +450,36 @@ class Maintenance:
                 and existing.get("object", {}).get("type") == "commit",
                 "Existing tag does not point directly to the verified merge commit",
             )
+        if release and not release.get("draft"):
+            require(not release.get("prerelease"), "Release is not stable")
+            require(existing is not None, "Published release is missing its immutable tag")
+            assets = release.get("assets", [])
+            require(
+                {asset.get("name") for asset in assets}
+                == {f"lanbon-mqtt-{target}.zip", "SHA256SUMS", "release-receipt.json"}
+                and len(assets) == 3
+                and all(
+                    asset.get("state") == "uploaded"
+                    and isinstance(asset.get("size"), int)
+                    and asset["size"] > 0
+                    for asset in assets
+                ),
+                "Published release assets are missing, incomplete or unexpected",
+            )
+            self.note(f"Stable release {tag} already exists; nothing to publish")
+            return
+        runs = self.api.pages(
+            f"/actions/workflows/release.yml/runs?head_sha={sha}", "workflow_runs"
+        )
+        if any(
+            run.get("head_sha") == sha
+            and run.get("head_branch") == tag
+            and run.get("event") == "workflow_dispatch"
+            and run.get("status") != "completed"
+            for run in runs
+        ):
+            self.note(f"Release {tag} is awaiting an existing release.yml run")
+            return
         if self.api.dry_run:
             self.note(f"Dry run: would create immutable {tag} at {sha} and dispatch release.yml")
             return
@@ -457,11 +496,10 @@ class Maintenance:
         if self.api.dry_run:
             self.note(f"Dry run: would create or recover release PR for {target}")
             return
-        permissions = self.api.request("GET", "/actions/permissions/workflow")
         require(
-            permissions.get("can_approve_pull_request_reviews") is True,
-            "GitHub Actions pull-request creation is disabled; "
-            "enable it explicitly before automation",
+            os.environ.get("LANBON_RELEASE_PRS_ENABLED") == "true",
+            "Release pull-request creation is disabled; "
+            "LANBON_RELEASE_PRS_ENABLED must be explicitly set to true after owner approval",
         )
         if existing:
             sha = existing["object"]["sha"]
@@ -537,7 +575,17 @@ class Maintenance:
             require(
                 current == next_patch(stable_version), "Main has an unexpected version transition"
             )
-            self.publish(main, stable_sha, stable_version)
+            merged = [
+                pr
+                for pr in self.api.pages("/pulls?state=closed&base=main")
+                if self.merged_release_pr(pr, current)
+            ]
+            require(
+                len(merged) == 1, "Expected exactly one matching merged release PR for recovery"
+            )
+            release_sha = merged[0]["merge_commit_sha"]
+            self.api.compare(release_sha, main)
+            self.publish(release_sha, stable_sha, stable_version)
             return
         prs = self.api.pages("/pulls?state=open&base=main")
         for item in prs:
@@ -550,7 +598,7 @@ class Maintenance:
                 self.candidate(pr, main, stable_version)
                 if not self.approved(pr, main):
                     return
-                sha = self.merge(pr)
+                sha = self.merge(pr, validate_main=False)
                 if sha:
                     self.publish(sha, stable_sha, stable_version)
                 return
@@ -559,7 +607,7 @@ class Maintenance:
                 continue
             try:
                 pr = self.api.request("GET", f"/pulls/{item['number']}")
-                check_pr_identity(pr, self.api.repo, DEPENDABOT)
+                check_pr_identity(pr, self.api.repo, DEPENDABOT, ready=False)
                 self.ruff_change(main, pr["head"]["sha"])
                 if not self.approved(pr, main):
                     return
