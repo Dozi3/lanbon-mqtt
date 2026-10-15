@@ -23,7 +23,9 @@ def require(condition, message):
 
 
 def command(*args):
-    result = subprocess.run(args, capture_output=True, text=True, check=False)
+    # Arguments remain separate argv entries; no shell parses tag/path contents.
+    require(bool(args) and args[0] in {"git", "gh"}, "Executable is not allowlisted")
+    result = subprocess.run(args, shell=False, capture_output=True, text=True, check=False)
     if result.returncode:
         raise PublicationError(f"{args[0]} {args[1]} failed (exit {result.returncode})")
     return result.stdout.strip()
@@ -32,6 +34,7 @@ def command(*args):
 def view(tag):
     result = subprocess.run(
         ["gh", "release", "view", tag, "--json", "tagName,isDraft,isPrerelease,assets"],
+        shell=False,
         capture_output=True,
         text=True,
         check=False,
@@ -49,6 +52,7 @@ def latest_flag(tag, repo):
         return "--latest=false"
     result = subprocess.run(
         ["gh", "api", f"repos/{repo}/releases/latest", "--jq", ".tag_name"],
+        shell=False,
         capture_output=True,
         text=True,
         check=False,
