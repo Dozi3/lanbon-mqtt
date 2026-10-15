@@ -46,9 +46,14 @@ If Home Assistant still runs and the release notes allow the downgrade:
 
 Replacing code alone does not reverse a configuration/storage migration. If the
 release changed storage incompatibly, follow that release's migration rollback
-instructions or restore your pre-update backup. The first public `rc.4`
-packages the accepted `rc.3` runtime and retains configuration schema version 2;
-its public metadata and documentation do not require a runtime migration.
+instructions or restore your pre-update backup. Stable `0.3.0` and public
+`0.3.0-rc.4` package the accepted `rc.3` runtime and retain configuration schema
+version 2; promoting that runtime to stable does not require a runtime migration.
+
+Repository automation may publish tested maintenance releases; it does not
+enable automatic installation or restart your Home Assistant. Review updates
+and use your normal backup and commissioning process. Maintainers can inspect
+the [automation policy](../RELEASE-PUBLICATION.md#automatic-maintenance).
 
 If Core cannot start, use your installation's supported recovery/file-access
 method to restore the exact previous `custom_components/lanbon_mqtt` directory,

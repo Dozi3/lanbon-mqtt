@@ -47,7 +47,7 @@ Node-RED, the Mosquitto app or the author's other integrations. The isolated
 HAOS runtime check is not a full installation matrix for every container,
 broker implementation or future Home Assistant version.
 
-## Evidence carried into the public candidate
+## Evidence carried into the public releases
 
 The preceding control-runtime candidate passed 524 software tests, 13 separate
 independent runtime checks, 11 native HA/MQTT acceptance checks and a separate
@@ -58,6 +58,9 @@ Public `0.3.0-rc.4` packages that control runtime with public metadata,
 documentation, branding and repository automation. It does not introduce a new
 device protocol. See [TESTING.md](../TESTING.md) for the commands and the
 distinction between inherited runtime evidence and fresh public packaging/CI.
+
+Stable `0.3.0` promotes that same integration runtime. Its version label does
+not extend the hardware or firmware compatibility established by those tests.
 
 ## Known boundaries
 

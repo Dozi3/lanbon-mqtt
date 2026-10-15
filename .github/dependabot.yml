@@ -14,5 +14,9 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      ruff-patches:
+        patterns: ["ruff"]
+        update-types: ["patch"]
       test-tooling:
         patterns: ["*"]
+        exclude-patterns: ["ruff"]

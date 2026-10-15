@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,8 +13,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  tag:
+    name: Require a version tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Reject branch dispatches
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: '[[ "$RELEASE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]'
+
   validate:
     name: Validate release
+    needs: tag
     uses: ./.github/workflows/validate.yml
 
   publish:
@@ -59,6 +71,8 @@ jobs:
           release_flags=()
           if [[ "$RELEASE_TAG" == *-* ]]; then
             release_flags+=(--prerelease --latest=false)
+          else
+            release_flags+=(--latest=true)
           fi
           gh release create "$RELEASE_TAG" dist/*.zip dist/SHA256SUMS dist/release-receipt.json \
             --verify-tag --title "Lanbon MQTT $RELEASE_TAG" --generate-notes "${release_flags[@]}"

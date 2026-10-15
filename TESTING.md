@@ -55,7 +55,7 @@ or disabled native entities, missing/zero-count subscriptions, contradicted
 command aliases, immediate command-time revalidation, real feedback precedence
 and nonpersistence of metadata-only routes.
 
-## What the first public release changes
+## Public release evidence
 
 Public `0.3.0-rc.4` retains that accepted control runtime and configuration schema
 version 2. It adds public metadata, documentation, branding and repository
@@ -67,6 +67,13 @@ the same test count.
 Release checks must validate the final combined source and archive. Neither
 historical green tests nor a successful metadata validator substitutes for
 fresh runtime checks when behavior changes.
+
+Stable `0.3.0` promotes that same integration runtime; the manifest version is
+the only changed integration file. It also updates development Ruff and adds
+repository maintenance policy tests. Fresh CI on the stable tag verifies the
+combined source, HACS/Hassfest metadata and release package. Maintenance policy
+tests cover disallowed runtime/lockfile changes, author and check validation,
+deterministic version PRs and dry-run mutation prevention.
 
 The native setup wizard was also completed on an isolated Core 2026.10.1
 installation using its on-screen fields and synthetic MQTT peers. A dimmer,

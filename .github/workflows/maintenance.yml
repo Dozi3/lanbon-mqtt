@@ -1,0 +1,52 @@
+name: Safe maintenance
+
+on:
+  schedule:
+    - cron: "47 4 * * *"
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Inspect eligibility without merging, creating PRs, tags or releases
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: safe-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    name: Apply strictly classified maintenance
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      checks: read
+      contents: write
+      pull-requests: write
+    steps:
+      # This privileged job always executes protected main, never PR source or
+      # downloaded artifacts. Candidate source is inspected only as API data.
+      - name: Check out trusted maintenance policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Process verified maintenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          args=()
+          if [[ "$DRY_RUN" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          python3 tools/maintenance.py "${args[@]}"
