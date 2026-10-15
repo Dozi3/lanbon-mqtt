@@ -49,6 +49,28 @@ and [download/version selection guide](https://www.hacs.xyz/docs/use/repositorie
 ### Manual installation alternative
 
 Download a tagged release from [Releases](https://github.com/Dozi3/lanbon-mqtt/releases).
+Expand its **Assets** section and download `lanbon-mqtt-<version>.zip` plus
+`SHA256SUMS` from that same release. `release-receipt.json` records the archive
+and individual file checksums. The separate GitHub **Packages** registry is not
+used for this HACS integration; the release assets are its manual packages.
+
+Before extracting, compare the ZIP's SHA-256 with its entry in `SHA256SUMS`.
+For PowerShell in the download directory:
+
+```powershell
+Get-ChildItem .\lanbon-mqtt-*.zip | Get-FileHash -Algorithm SHA256
+Get-Content .\SHA256SUMS
+```
+
+For Linux with both downloads in the same directory:
+
+```sh
+sha256sum --check SHA256SUMS
+```
+
+HACS normally installs the integration from the matching tagged repository
+folder and does not require you to download these assets manually.
+
 Copy only its `custom_components/lanbon_mqtt` directory into your Home Assistant
 configuration directory, so the final path is
 `config/custom_components/lanbon_mqtt/manifest.json`. Avoid an extra nested
