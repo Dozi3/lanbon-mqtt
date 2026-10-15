@@ -2,6 +2,17 @@
 
 [Home](../README.md) · [Setup](../SETUP.md) · [Support](../SUPPORT.md)
 
+## GitHub says there are no packages
+
+Open [Releases → latest stable](https://github.com/Dozi3/lanbon-mqtt/releases/latest)
+and expand **Assets**. The installable `lanbon-mqtt-X.Y.Z.zip`, `SHA256SUMS` and
+`release-receipt.json` are attached there. The repository's separate **Packages**
+counter is not used for this Home Assistant integration.
+
+For HACS, add this repository as an **Integration** and download the published
+version. For a manual install, follow the [ZIP and checksum instructions](../SETUP.md#manual-installation-alternative).
+Do not copy the whole repository into `custom_components`.
+
 ## Control status
 
 Start with the physical device's **Control status** sensor. Its attributes
