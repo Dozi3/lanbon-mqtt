@@ -2,7 +2,13 @@
 
 ## 0.3.1
 
-- Maintenance release containing validated documentation and/or Ruff patch updates.
+- Clarify release ZIP assets, checksum verification and HACS installation.
+- Handle Sourcery's appended PR summary while retaining exact generated-source
+  and bot-identity checks.
+- Recover approval-required native PR validation through one guarded rerun;
+  retain real test results and every branch protection requirement.
+- Run an hourly maintenance sweep to recover suppressed follow-up events and
+  wait quietly for pending validation.
 - Device control runtime and configuration schema are unchanged.
 
 Changes are listed by release. Commission a safe output after installation or
