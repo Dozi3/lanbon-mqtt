@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2
+
+- Maintenance release containing validated documentation and/or Ruff patch updates.
+- Device control runtime and configuration schema are unchanged.
+
 ## 0.3.1
 
 - Clarify release ZIP assets, checksum verification and HACS installation.
